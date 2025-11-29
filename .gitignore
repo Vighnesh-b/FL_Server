@@ -1,5 +1,19 @@
-__pycache__
-data
-global_models
-uploaded_client_weights
-venv
+*node_modules# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+
+# Node modules (do NOT push to git)
+node_modules/
+
+# Project directories to ignore
+data/
+global_models/
+uploaded_client_weights/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
