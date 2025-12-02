@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify,Response
+from flask import Flask, request, jsonify, Response
 from flask import send_file
 import os
 import time
@@ -11,7 +11,7 @@ CLIENT_STATS_FILE = "client_stats.json"
 UPLOAD_DIR = "uploaded_client_weights"
 GLOBAL_MODEL_PATH = "global_models/global_latest.pth"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs("global_models",exist_ok=True)
+os.makedirs("global_models", exist_ok=True)
 
 @app.route('/api/upload-client-weights', methods=['POST'])
 def upload_client_weights():
@@ -49,6 +49,43 @@ def upload_client_weights():
         "save_path": save_path
     }), 200
 
+@app.route("/api/get-current-round", methods=["GET"])
+def get_current_round():
+    """Get the current round from client_stats.json"""
+    try:
+        if not os.path.exists(CLIENT_STATS_FILE):
+            # No stats file means we're at round 0 or 1
+            return jsonify({
+                "current_round": 1,
+                "status": "initialized"
+            }), 200
+        
+        with open(CLIENT_STATS_FILE, "r") as f:
+            data = json.load(f)
+        
+        if not data:
+            # Empty stats file
+            return jsonify({
+                "current_round": 1,
+                "status": "initialized"
+            }), 200
+        
+        # Get the maximum round number and add 1 for the next round
+        rounds = [int(r) for r in data.keys()]
+        current_round = max(rounds) + 1 if rounds else 1
+        
+        return jsonify({
+            "current_round": current_round,
+            "status": "active",
+            "completed_rounds": rounds
+        }), 200
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to get current round: {str(e)}")
+        return jsonify({
+            "error": str(e),
+            "current_round": 1
+        }), 500
 
 @app.route("/api/get-global-model", methods=["GET"])
 def get_global_model():
@@ -57,7 +94,7 @@ def get_global_model():
 
     if not os.path.exists(GLOBAL_MODEL_PATH):
         print("[ERROR] Global model file not found!")
-        return {"error": "No global model found on server"}, 404
+        return jsonify({"error": "No global model found on server. Please initialize the server first."}), 404
 
     # Print stats
     size_mb = round(os.path.getsize(GLOBAL_MODEL_PATH) / (1024 * 1024), 2)
@@ -87,7 +124,6 @@ def get_global_model():
     return response
 
 def store_client_stats(cur_round, client_id, dataset_size):
-
     if os.path.exists(CLIENT_STATS_FILE):
         with open(CLIENT_STATS_FILE, "r") as f:
             stats = json.load(f)
@@ -99,18 +135,20 @@ def store_client_stats(cur_round, client_id, dataset_size):
     if cur_round not in stats:
         stats[cur_round] = []
 
-    stats[cur_round].append(
-        {
-            "client_id": client_id,
-            "dataset_size": dataset_size,
-            "timestamp": str(datetime.now())
-        }
-    )
+    # Check if this client already uploaded for this round
+    existing = [c for c in stats[cur_round] if c["client_id"] == client_id]
+    if existing:
+        print(f"[WARNING] Client {client_id} already uploaded for round {cur_round}. Updating...")
+        stats[cur_round] = [c for c in stats[cur_round] if c["client_id"] != client_id]
+
+    stats[cur_round].append({
+        "client_id": client_id,
+        "dataset_size": dataset_size,
+        "timestamp": str(datetime.now())
+    })
 
     with open(CLIENT_STATS_FILE, "w") as f:
         json.dump(stats, f, indent=4)
-
-
 
 if __name__ == "__main__":
     app.run(port=8000)
